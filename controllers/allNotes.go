@@ -9,11 +9,13 @@ import (
 
 func GetAllNote(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(models.NotesList)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	var NotesDB []models.Notes
+	result := db.Find(&NotesDB)
+	if result.Error != nil {
+		http.Error(w, "Database Error", http.StatusBadRequest)
 		return
 	}
+	json.NewEncoder(w).Encode(NotesDB)
 	w.WriteHeader(http.StatusOK)
 
 }

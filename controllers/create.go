@@ -3,6 +3,8 @@ package controllers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,23 +50,33 @@ func CreateNewNote(w http.ResponseWriter, r *http.Request) {
 	}
 	mu.Lock()
 	models.NotesList = append(models.NotesList, note)
+	result := db.Create(&note)
 	mu.Unlock()
+	if result.Error != nil {
+		http.Error(w, "Database Error", http.StatusInternalServerError)
+		return
+	}
+
 	time := strings.Split(note.Expiration, " ")
-	if time[1] == "min" {
+	if time[1] != "view" {
 		go deleteNote(time[0], time[1], &note)
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(note_c)
 }
 
 func validate(note *models.Notes) error {
-	for i, _ := range models.NotesList {
-		for models.NotesList[i].Id == note.Id {
-			p, _ := password.Generate(6, 3, 0, false, false)
-			note.Id = p
-		}
+	var results []models.Notes
+	db.Where("id = ?", note.Id).Find(&results)
+
+	for len(results) > 0 {
+		p, _ := password.Generate(6, 3, 0, false, false)
+		note.Id = p
+		db.Where("id = ?", note.Id).Find(&results)
 	}
+
 	if note.Title == "" {
 		return errors.New("title is missing")
 	}
@@ -92,10 +104,14 @@ func deleteNote(time_str, time_frame string, note *models.Notes) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	for i, _ := range models.NotesList {
-		if models.NotesList[i].Id == note.Id {
-			models.NotesList = append(models.NotesList[:i], models.NotesList[i+1:]...)
-			break
-		}
+	results := db.Where("id = ?", note.Id).Delete(&models.Notes{})
+	if results.Error != nil {
+		log.Fatal("Database Error", results.Error)
+		return
 	}
+	if results.RowsAffected == 0 {
+		fmt.Printf("Note with the id %v not found\n", note.Id)
+		return
+	}
+	fmt.Printf("Note expires with the id : %v\n", note.Id)
 }

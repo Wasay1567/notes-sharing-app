@@ -11,19 +11,16 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 	pass := r.PathValue("pass")
 	mu.Lock()
 	defer mu.Unlock()
-	for i, note := range models.NotesList {
-		if note.Id == id {
-			if note.Password == pass {
-				models.NotesList = append(models.NotesList[:i], models.NotesList[i+1:]...)
-				w.Write([]byte("Note deleted"))
-				w.WriteHeader(http.StatusAccepted)
-				return
-			} else {
-				http.Error(w, "Incorrect Password", http.StatusForbidden)
-				return
-			}
-		}
+
+	result := db.Where("id = ? AND password = ?", id, pass).Delete(&models.Notes{})
+	if result.Error != nil {
+		http.Error(w, "DB ERROR", http.StatusInternalServerError)
+		return
 	}
 
-	http.Error(w, "ID NOT FOUND", http.StatusNotFound)
+	if result.RowsAffected == 0 {
+		http.Error(w, "Note not found or password is incorrect", http.StatusNotFound)
+	}
+	w.Write([]byte("Note Deleted"))
+	w.WriteHeader(http.StatusOK)
 }
