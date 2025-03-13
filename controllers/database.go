@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/AbdulWasay1207/notes-sharing-app/models"
 	"gorm.io/driver/sqlite"
@@ -14,8 +14,11 @@ func init() {
 	var err error
 	db, err = gorm.Open(sqlite.Open("notes.db"), &gorm.Config{})
 	if err != nil {
-		panic("Failed to connect DB")
+		log.Fatal("Failed to connect to database: ", err)
 	}
-	db.AutoMigrate(&models.Notes{})
-	fmt.Println("Database Connected Successfully....")
+
+	if err = db.AutoMigrate(&models.User{}, &models.Notes{}); err != nil {
+		log.Fatal("Migration Failed ", err)
+	}
+	log.Println("Database Migration Successful....")
 }

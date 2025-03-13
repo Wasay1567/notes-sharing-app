@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/AbdulWasay1207/notes-sharing-app/controllers"
+	middleware "github.com/AbdulWasay1207/notes-sharing-app/middlewares"
 )
 
 type config struct {
@@ -19,10 +20,12 @@ type application struct {
 func (api *application) getRouter() http.Handler {
 	router := http.NewServeMux()
 
-	router.HandleFunc("POST /v1/notes", controllers.CreateNewNote)
-	router.HandleFunc("GET /v1/notes/{id}/{pass}", controllers.GetNote)
-	router.HandleFunc("GET /v1/notes", controllers.GetAllNote)
-	router.HandleFunc("DELETE /v1/notes/{id}/{pass}", controllers.Delete)
+	router.Handle("POST /v1/notes", middleware.JwtAuth(http.HandlerFunc(controllers.CreateNewNote)))
+	router.HandleFunc("POST /v1/signup", controllers.RegisterUser)
+	router.HandleFunc("POST /v1/login", controllers.LoginUser)
+	router.Handle("GET /v1/notes/{id}/{pass}", middleware.JwtAuth(http.HandlerFunc(controllers.GetNote)))
+	// router.HandleFunc("GET /v1/notes", controllers.GetAllNote)
+	router.Handle("DELETE /v1/notes/{id}", middleware.JwtAuth(http.HandlerFunc(controllers.Delete)))
 
 	return router
 }

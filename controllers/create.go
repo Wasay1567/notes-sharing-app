@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"time"
 
 	"github.com/AbdulWasay1207/notes-sharing-app/models"
-	"github.com/sethvargo/go-password/password"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var mu sync.Mutex
@@ -26,62 +25,66 @@ func CreateNewNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, _ := password.Generate(6, 3, 0, false, false)
-
 	mu.Lock()
+	defer mu.Unlock()
+
+	userId := GetUserID(r)
+	if userId == 0 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	fmt.Println(userId)
+
 	note := models.Notes{
-		Id:         p,
 		Title:      payload.Title,
 		Content:    payload.Content,
 		Expiration: payload.Expiration,
-		Created_at: time.Now().Format("Mon Jan 2 15:04"),
+		Created_at: time.Now(),
+		Viewed:     false,
+		UserID:     userId,
 		Password:   payload.Password,
 	}
-	note_c := models.Resp{
-		Id:  note.Id,
-		Url: "https://localhost:8080/v1/notes/" + note.Id,
-	}
-	mu.Unlock()
 
 	err = validate(&note)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	mu.Lock()
-	models.NotesList = append(models.NotesList, note)
-	result := db.Create(&note)
-	mu.Unlock()
-	if result.Error != nil {
-		http.Error(w, "Database Error", http.StatusInternalServerError)
-		return
+
+	db.Create(&note)
+
+	timeParts := strings.Split(note.Expiration, " ")
+	if len(timeParts) == 2 && timeParts[1] != "view" {
+		go deleteNote(timeParts[0], timeParts[1], &note)
 	}
 
-	time := strings.Split(note.Expiration, " ")
-	if time[1] != "view" {
-		go deleteNote(time[0], time[1], &note)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(note_c)
+	json.NewEncoder(w).Encode(models.Resp{
+		Id:  note.Id,
+		Url: "https://localhost:8080/v1/notes/" + strconv.Itoa(int(note.Id)),
+	})
+}
+
+func GetUserID(r *http.Request) uint {
+	tokenString := r.Header.Get("Authorization")
+	claims := jwt.MapClaims{}
+	jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	username := claims["username"].(string)
+	var u models.User
+	_ = db.Where("username = ?", username).First(&u)
+	return u.ID
 }
 
 func validate(note *models.Notes) error {
-	var results []models.Notes
-	db.Where("id = ?", note.Id).Find(&results)
-
-	for len(results) > 0 {
-		p, _ := password.Generate(6, 3, 0, false, false)
-		note.Id = p
-		db.Where("id = ?", note.Id).Find(&results)
-	}
 
 	if note.Title == "" {
 		return errors.New("title is missing")
 	}
 	if note.Expiration == "" {
-		note.Expiration = "1 min"
+		note.Expiration = "1 h"
 	} else {
 		n := strings.Split(note.Expiration, " ")
 		if len(n) != 2 {
@@ -104,14 +107,16 @@ func deleteNote(time_str, time_frame string, note *models.Notes) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	results := db.Where("id = ?", note.Id).Delete(&models.Notes{})
-	if results.Error != nil {
-		log.Fatal("Database Error", results.Error)
-		return
-	}
-	if results.RowsAffected == 0 {
-		fmt.Printf("Note with the id %v not found\n", note.Id)
-		return
-	}
+	// results := db.Where("id = ?", note.Id).Delete(&models.Notes{})
+	// if results.Error != nil {
+	// 	log.Fatal("Database Error", results.Error)
+	// 	return
+	// }
+	// if results.RowsAffected == 0 {
+	// 	fmt.Printf("Note with the id %v not found\n", note.Id)
+	// 	return
+	// }
+	note.IsExpired = true
+	db.Save(&note)
 	fmt.Printf("Note expires with the id : %v\n", note.Id)
 }

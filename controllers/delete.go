@@ -1,26 +1,36 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/AbdulWasay1207/notes-sharing-app/models"
 )
 
 func Delete(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	pass := r.PathValue("pass")
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid note ID", http.StatusBadRequest)
+		return
+	}
+	user_id := GetUserID(r)
+
 	mu.Lock()
 	defer mu.Unlock()
 
-	result := db.Where("id = ? AND password = ?", id, pass).Delete(&models.Notes{})
+	result := db.Where("id = ? AND user_id = ?", id, user_id).Delete(&models.Notes{})
 	if result.Error != nil {
-		http.Error(w, "DB ERROR", http.StatusInternalServerError)
+		log.Printf("Database error: %v", result.Error)
+		http.Error(w, "Cannot delete the note", http.StatusInternalServerError)
+		return
+	}
+	if result.RowsAffected == 0 {
+		http.Error(w, "Note not found or unauthorized", http.StatusNotFound)
 		return
 	}
 
-	if result.RowsAffected == 0 {
-		http.Error(w, "Note not found or password is incorrect", http.StatusNotFound)
-	}
-	w.Write([]byte("Note Deleted"))
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Note Deleted"))
 }
